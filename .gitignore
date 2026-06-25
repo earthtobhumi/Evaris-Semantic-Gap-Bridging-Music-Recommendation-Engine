@@ -1,0 +1,25 @@
+# Audio files
+*.mp3
+audio/
+
+# Database
+*.db
+
+# Excel datasets
+*.xlsx
+
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environments
+.venv/
+.venv311/
+venv/
+env/
+
+# Secrets
+.env
+
+# Local data stores
+chroma_store/
