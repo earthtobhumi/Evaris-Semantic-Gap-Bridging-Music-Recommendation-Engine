@@ -7,8 +7,6 @@ from rag_chain import run_rag
 
 load_dotenv()
 
-API_URL = os.getenv("API_URL", "http://localhost:8000")
-
 def fetch_cover(song, artist):
     try:
         q   = requests.utils.quote(f"{song} {artist}")
@@ -466,16 +464,15 @@ st.markdown("""
     <span class="slider-tag">signal intensity</span>
     <span class="slider-tag">high energy ▸</span>
 </div>""", unsafe_allow_html=True)
-energy_val  = st.slider("", min_value=1, max_value=10, value=5, label_visibility="collapsed")
-user_energy = energy_val / 10
+energy_val = st.slider("", min_value=1, max_value=10, value=5, label_visibility="collapsed")
 
 if st.button("⟡  transmit to brain"):
     if not query.strip():
         st.warning("// no emotional signal detected")
     else:
-       with st.spinner("// translating feeling into frequency..."):
-         user_energy = energy_val / 10
-    result = run_rag(query.strip(), user_energy)
+        with st.spinner("// translating feeling into frequency..."):
+            user_energy = energy_val / 10
+            result = run_rag(query.strip(), user_energy)
 
         # ── BRIDGE
         st.markdown("""
@@ -506,15 +503,15 @@ if st.button("⟡  transmit to brain"):
         rank_top_map = ["top", "", "", "", ""]
 
         for i, r in enumerate(result["songs"]):
-            score      = r["score"]
-            score_cls  = "high" if score > 0.6 else ("mid" if score > 0.4 else "low")
-            dsp_tag    = '<span class="dsp-tag">DSP</span>' if r["has_dsp"] else ""
-            rank_num   = str(i + 1).zfill(2)
-            song_name  = r["song"]
-            artist     = r["artist"]
-            score_str  = f"{score:.3f}"
-            rank_cls   = rank_cls_map[i]
-            rank_top   = rank_top_map[i]
+            score     = r["score"]
+            score_cls = "high" if score > 0.6 else ("mid" if score > 0.4 else "low")
+            dsp_tag   = '<span class="dsp-tag">DSP</span>' if r["has_dsp"] else ""
+            rank_num  = str(i + 1).zfill(2)
+            song_name = r["song"]
+            artist    = r["artist"]
+            score_str = f"{score:.3f}"
+            rank_cls  = rank_cls_map[i]
+            rank_top  = rank_top_map[i]
 
             bar_colors  = ["#ff4d6d", "#e05aff", "#c77dff", "#8a9ff5", "#48cae4"]
             bar_heights = [
@@ -559,7 +556,7 @@ if st.button("⟡  transmit to brain"):
             with col_card:
                 st.markdown(html, unsafe_allow_html=True)
 
-                # ── WHY BOX
+        # ── WHY BOX
         why_html = result["explanation"].replace("\n", "<br>")
         why_html = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', why_html)
         st.markdown(f"""
@@ -567,3 +564,5 @@ if st.button("⟡  transmit to brain"):
             <div class="why-eyebrow">brain signal analysis</div>
             <div class="why-content">{why_html}</div>
         </div>""", unsafe_allow_html=True)
+
+st.markdown('<div class="footer">EVARIS · HEART → MUSIC → BRAIN · v0.3</div>', unsafe_allow_html=True)
