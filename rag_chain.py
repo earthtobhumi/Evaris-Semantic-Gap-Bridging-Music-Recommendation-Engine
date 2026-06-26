@@ -1,6 +1,4 @@
 import os
-os.environ["TRANSFORMERS_OFFLINE"] = "1"
-os.environ["HF_DATASETS_OFFLINE"] = "1"
 import sqlite3
 import numpy as np
 import pandas as pd
@@ -23,7 +21,12 @@ W_SENTIMENT = 0.5
 W_DSP       = 0.3
 W_ENERGY    = 0.2
 
-embedder   = SentenceTransformer(MODEL)
+_embedder = None
+def get_embedder():
+    global _embedder
+    if _embedder is None:
+        _embedder = SentenceTransformer(MODEL)
+    return _embedder
 client     = chromadb.PersistentClient(path=CHROMA_DIR)
 collection = client.get_or_create_collection(
     name="evaris_songs",
@@ -50,7 +53,7 @@ expand_chain  = expand_prompt | llm | StrOutputParser()
 explain_chain = explain_prompt | llm | StrOutputParser()
 
 def retrieve(expanded_query: str, user_energy: float = 0.5):
-    query_vec = embedder.encode([expanded_query])[0].tolist()
+    query_vec = get_embedder().encode([expanded_query])[0].tolist()
     results   = collection.query(query_embeddings=[query_vec], n_results=TOP_K)
 
     con     = sqlite3.connect(DB_PATH)
