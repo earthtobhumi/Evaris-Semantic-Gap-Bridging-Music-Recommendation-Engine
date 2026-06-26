@@ -3,6 +3,7 @@ import re
 import requests
 import streamlit as st
 from dotenv import load_dotenv
+from rag_chain import run_rag
 
 load_dotenv()
 
@@ -472,16 +473,9 @@ if st.button("⟡  transmit to brain"):
     if not query.strip():
         st.warning("// no emotional signal detected")
     else:
-        with st.spinner("// translating feeling into frequency..."):
-            response = requests.post(
-                f"{API_URL}/recommend",
-                json={"mood": query.strip(), "energy_level": energy_val},
-                timeout=60
-            )
-            if response.status_code != 200:
-                st.error(f"// API error: {response.status_code}")
-                st.stop()
-            result = response.json()
+       with st.spinner("// translating feeling into frequency..."):
+         user_energy = energy_val / 10
+    result = run_rag(query.strip(), user_energy)
 
         # ── BRIDGE
         st.markdown("""
