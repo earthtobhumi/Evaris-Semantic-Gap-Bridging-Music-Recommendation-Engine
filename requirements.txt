@@ -1,0 +1,13 @@
+streamlit
+requests
+python-dotenv
+sentence-transformers
+chromadb
+langchain-core
+langchain-groq
+langchain-chroma
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+numpy==2.4.0
