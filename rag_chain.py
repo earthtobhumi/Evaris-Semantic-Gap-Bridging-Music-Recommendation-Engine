@@ -44,7 +44,9 @@ _llm = None
 def get_llm():
     global _llm
     if _llm is None:
-        _llm = ChatGroq(api_key=os.getenv("GROQ_API_KEY"), model=GROQ_MODEL, temperature=0.4)
+        import streamlit as st
+        api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
+        _llm = ChatGroq(api_key=api_key, model=GROQ_MODEL, temperature=0.4)
     return _llm
 
 expand_prompt = ChatPromptTemplate.from_messages([
