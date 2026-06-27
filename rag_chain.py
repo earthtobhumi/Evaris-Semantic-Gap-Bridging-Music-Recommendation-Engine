@@ -68,13 +68,17 @@ def retrieve(expanded_query: str, user_energy: float = 0.5):
     results   = get_collection().query(query_embeddings=[query_vec], n_results=TOP_K)
 
     db_url = st.secrets.get("DATABASE_URL") or os.getenv("DATABASE_URL")
-    engine = create_engine(db_url)
-    with engine.connect() as con:
-        dsp_df = pd.read_sql("SELECT song, artist, rms_energy FROM audio_features", con)
+    try:
+        engine = create_engine(db_url)
+        with engine.connect() as con:
+            dsp_df = pd.read_sql("SELECT song, artist, rms_energy FROM audio_features", con)
+    except Exception as e:
+        st.error(f"DB ERROR: {str(e)}")
+        raise
 
     rms_max = dsp_df["rms_energy"].max() if not dsp_df.empty else 1.0
     rms_min = dsp_df["rms_energy"].min() if not dsp_df.empty else 0.0
-
+    
     songs = []
     for i, meta in enumerate(results["metadatas"][0]):
         sentiment_score = 1 / (1 + results["distances"][0][i])
