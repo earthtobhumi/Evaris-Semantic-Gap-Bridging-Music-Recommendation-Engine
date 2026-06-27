@@ -27,12 +27,25 @@ def get_embedder():
     if _embedder is None:
         _embedder = SentenceTransformer(MODEL)
     return _embedder
-client     = chromadb.PersistentClient(path=CHROMA_DIR)
-collection = client.get_or_create_collection(
-    name="evaris_songs",
-    metadata={"hnsw:space": "cosine"}
-)
-llm        = ChatGroq(api_key=os.getenv("GROQ_API_KEY"), model=GROQ_MODEL, temperature=0.4)
+
+_client = None
+_collection = None
+def get_collection():
+    global _client, _collection
+    if _collection is None:
+        _client = chromadb.PersistentClient(path=CHROMA_DIR)
+        _collection = _client.get_or_create_collection(
+            name="evaris_songs",
+            metadata={"hnsw:space": "cosine"}
+        )
+    return _collection
+
+_llm = None
+def get_llm():
+    global _llm
+    if _llm is None:
+        _llm = ChatGroq(api_key=os.getenv("GROQ_API_KEY"), model=GROQ_MODEL, temperature=0.4)
+    return _llm
 
 expand_prompt = ChatPromptTemplate.from_messages([
     ("system", """You are a music mood interpreter. Convert the user's message into a rich 
@@ -49,12 +62,9 @@ Format: Song Name — explanation"""),
     ("human", "User mood: {query}\n\nRecommended songs:\n{songs}")
 ])
 
-expand_chain  = expand_prompt | llm | StrOutputParser()
-explain_chain = explain_prompt | llm | StrOutputParser()
-
 def retrieve(expanded_query: str, user_energy: float = 0.5):
     query_vec = get_embedder().encode([expanded_query])[0].tolist()
-    results   = collection.query(query_embeddings=[query_vec], n_results=TOP_K)
+    results   = get_collection().query(query_embeddings=[query_vec], n_results=TOP_K)
 
     con     = sqlite3.connect(DB_PATH)
     dsp_df  = pd.read_sql("SELECT song, artist, rms_energy FROM audio_features", con)
@@ -89,6 +99,9 @@ def retrieve(expanded_query: str, user_energy: float = 0.5):
     return sorted(songs, key=lambda x: x["score"], reverse=True)
 
 def run_rag(query: str, user_energy: float = 0.5):
+    expand_chain  = expand_prompt | get_llm() | StrOutputParser()
+    explain_chain = explain_prompt | get_llm() | StrOutputParser()
+
     print(f"\n🔍 Expanding query: \"{query}\"")
     expanded = expand_chain.invoke({"query": query})
     print(f"📝 Expanded: {expanded}\n")
