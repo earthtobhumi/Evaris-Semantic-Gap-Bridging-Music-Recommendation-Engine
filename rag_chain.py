@@ -1,8 +1,9 @@
 import os
-import sqlite3
 import numpy as np
 import pandas as pd
 import chromadb
+import streamlit as st
+from sqlalchemy import create_engine
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
 from langchain_groq import ChatGroq
@@ -13,7 +14,6 @@ from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 load_dotenv()
 
 CHROMA_DIR  = "chroma_store"
-DB_PATH     = "song_dna.db"
 MODEL       = "paraphrase-multilingual-MiniLM-L12-v2"
 GROQ_MODEL  = "llama-3.1-8b-instant"
 TOP_K       = 5
@@ -44,7 +44,6 @@ _llm = None
 def get_llm():
     global _llm
     if _llm is None:
-        import streamlit as st
         api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
         _llm = ChatGroq(api_key=api_key, model=GROQ_MODEL, temperature=0.4)
     return _llm
@@ -68,9 +67,10 @@ def retrieve(expanded_query: str, user_energy: float = 0.5):
     query_vec = get_embedder().encode([expanded_query])[0].tolist()
     results   = get_collection().query(query_embeddings=[query_vec], n_results=TOP_K)
 
-    con     = sqlite3.connect(DB_PATH)
-    dsp_df  = pd.read_sql("SELECT song, artist, rms_energy FROM audio_features", con)
-    con.close()
+    db_url = st.secrets.get("DATABASE_URL") or os.getenv("DATABASE_URL")
+    engine = create_engine(db_url)
+    with engine.connect() as con:
+        dsp_df = pd.read_sql("SELECT song, artist, rms_energy FROM audio_features", con)
 
     rms_max = dsp_df["rms_energy"].max() if not dsp_df.empty else 1.0
     rms_min = dsp_df["rms_energy"].min() if not dsp_df.empty else 0.0
