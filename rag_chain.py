@@ -16,7 +16,7 @@ load_dotenv()
 CHROMA_DIR  = "chroma_store"
 MODEL       = "paraphrase-multilingual-MiniLM-L12-v2"
 GROQ_MODEL  = "llama-3.1-8b-instant"
-TOP_K       = 5
+TOP_K       = 10
 W_SENTIMENT = 0.5
 W_DSP       = 0.3
 W_ENERGY    = 0.2
