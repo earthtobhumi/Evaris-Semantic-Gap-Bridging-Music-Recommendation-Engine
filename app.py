@@ -2,21 +2,51 @@ import os
 import re
 import requests
 import streamlit as st
+from difflib import SequenceMatcher
 from dotenv import load_dotenv
 from rag_chain import run_rag
 
 load_dotenv()
 
+# Manual overrides for known-bad iTunes search matches.
+# Add entries here as you spot wrong cover art in the wild — cheaper than
+# trying to make fuzzy-matching perfect for every edge case.
+COVER_OVERRIDES = {
+    # "song name": "https://...300x300bb.jpg",
+}
+
+def _title_similarity(a, b):
+    """Normalized fuzzy match between two song titles (lowercase, no punctuation)."""
+    norm = lambda s: re.sub(r"[^a-z0-9 ]", "", s.lower())
+    return SequenceMatcher(None, norm(a), norm(b)).ratio()
+
 def fetch_cover(song, artist):
+    if song in COVER_OVERRIDES:
+        return COVER_OVERRIDES[song]
+
     try:
-        q   = requests.utils.quote(f"{song} {artist}")
-        r   = requests.get(f"https://itunes.apple.com/search?term={q}&entity=song&limit=1", timeout=5)
+        q = requests.utils.quote(f"{song} {artist}")
+        r = requests.get(
+            f"https://itunes.apple.com/search?term={q}&entity=song&limit=5&country=IN",
+            timeout=5
+        )
         res = r.json().get("results", [])
-        if res:
-            return res[0].get("artworkUrl100", "").replace("100x100", "300x300")
-    except:
-        pass
-    return ""
+        if not res:
+            return ""
+
+        # Pick the result whose track name is the closest fuzzy match to our
+        # song title, instead of blindly trusting iTunes' top hit — this is
+        # what was causing wrong artwork (e.g. another track by the same
+        # artist outranking the correct one in iTunes' own relevance sort).
+        best = max(res, key=lambda r: _title_similarity(song, r.get("trackName", "")))
+
+        # If even the best match is a poor fit, don't show misleading art.
+        if _title_similarity(song, best.get("trackName", "")) < 0.4:
+            return ""
+
+        return best.get("artworkUrl100", "").replace("100x100", "300x300")
+    except Exception:
+        return ""
 
 st.set_page_config(page_title="Evaris", page_icon="🎵", layout="centered")
 
