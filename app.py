@@ -540,8 +540,8 @@ if st.button("⟡  transmit to brain"):
             song_name = r["song"]
             artist    = r["artist"]
             score_str = f"{score:.3f}"
-            rank_cls  = rank_cls_map[i]
-            rank_top  = rank_top_map[i]
+            rank_cls  = rank_cls_map[i] if i < len(rank_cls_map) else "rank-other"
+            rank_top  = rank_top_map[i] if i < len(rank_top_map) else ""
 
             bar_colors  = ["#ff4d6d", "#e05aff", "#c77dff", "#8a9ff5", "#48cae4"]
             bar_heights = [
