@@ -5,8 +5,16 @@ import streamlit as st
 from difflib import SequenceMatcher
 from dotenv import load_dotenv
 from rag_chain import run_rag
+from db import SessionLocal, Visit
 
 load_dotenv()
+
+if "visit_logged" not in st.session_state:
+    _db = SessionLocal()
+    _db.add(Visit(query_text=None))
+    _db.commit()
+    _db.close()
+    st.session_state.visit_logged = True
 
 # Manual overrides for known-bad iTunes search matches.
 # Add entries here as you spot wrong cover art in the wild — cheaper than
@@ -49,6 +57,15 @@ def fetch_cover(song, artist):
         return ""
 
 st.set_page_config(page_title="Evaris", page_icon="🎵", layout="centered")
+
+with st.sidebar:
+    _db = SessionLocal()
+    total_visits = _db.query(Visit).count()
+    total_queries = _db.query(Visit).filter(Visit.query_text.isnot(None)).count()
+    _db.close()
+    st.markdown("### 📊 Traffic")
+    st.metric("Total visits", total_visits)
+    st.metric("Queries run", total_queries)
 
 st.markdown("""
 <style>
@@ -503,6 +520,11 @@ if st.button("⟡  transmit to brain"):
         with st.spinner("// translating feeling into frequency..."):
             user_energy = energy_val / 10
             result = run_rag(query.strip(), user_energy)
+
+        _db = SessionLocal()
+        _db.add(Visit(query_text=query.strip()))
+        _db.commit()
+        _db.close()
 
         # ── BRIDGE
         st.markdown("""

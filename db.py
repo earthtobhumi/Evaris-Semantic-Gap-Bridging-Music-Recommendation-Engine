@@ -1,7 +1,8 @@
 import os
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, String, Float, Integer, Text
+from sqlalchemy import create_engine, Column, String, Float, Integer, Text, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.sql import func
 
 load_dotenv()
 
@@ -38,6 +39,12 @@ class AudioFeature(Base):
     tempo_bpm  = Column(Float)
     key        = Column(String)
     rms_energy = Column(Float)
+
+class Visit(Base):
+    __tablename__ = "visits"
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    visited_at  = Column(DateTime(timezone=True), server_default=func.now())
+    query_text  = Column(Text, nullable=True)
 
 def init_db():
     Base.metadata.create_all(engine)
