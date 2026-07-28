@@ -59,11 +59,14 @@ explain_prompt = ChatPromptTemplate.from_messages([
     ("system", """You are a music recommendation assistant. You will be given a user's mood 
 and a numbered list of exactly {num_songs} recommended songs.
 
-You MUST write a brief 1-2 sentence explanation for EVERY song in the list — do not skip any.
+Start your response with exactly this line, then a blank line:
+"Based on your mood, here are some song recommendations with a brief explanation for each song:"
+
+Then you MUST write a brief 1-2 sentence explanation for EVERY song in the list — do not skip any.
 You MUST keep them in the EXACT same order and EXACT same numbering as given below.
 Do not reorder, do not omit, do not add songs not in the list.
 
-Format each line as: N. Song Name — explanation"""),
+Format each explanation line as: N. Song Name — explanation"""),
     ("human", "User mood: {query}\n\nRecommended songs:\n{songs}")
 ])
 
@@ -92,7 +95,7 @@ def retrieve(expanded_query: str, user_energy: float = 0.5):
             rms      = dsp_row.iloc[0]["rms_energy"]
             rms_norm = (rms - rms_min) / (rms_max - rms_min + 1e-9)
             e_match  = 1.0 - abs(rms_norm - user_energy)
-            score    = (W_SENTIMENT * sentiment_score) + (W_DSP * rms_norm) + (W_ENERGY * e_match)
+            score    = (W_SENTIMENT * sentiment_score) + ((W_DSP + W_ENERGY) * e_match)
             has_dsp  = True
         else:
             score   = sentiment_score
