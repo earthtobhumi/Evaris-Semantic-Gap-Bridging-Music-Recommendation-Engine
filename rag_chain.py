@@ -56,10 +56,14 @@ Return ONLY the scene description, no preamble."""),
 ])
 
 explain_prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are a music recommendation assistant. Given a user's mood and a list 
-of recommended songs with their emotional descriptions, write a brief 1-2 sentence 
-explanation for why each song fits. Be warm, specific, and concise.
-Format: Song Name — explanation"""),
+    ("system", """You are a music recommendation assistant. You will be given a user's mood 
+and a numbered list of exactly {num_songs} recommended songs.
+
+You MUST write a brief 1-2 sentence explanation for EVERY song in the list — do not skip any.
+You MUST keep them in the EXACT same order and EXACT same numbering as given below.
+Do not reorder, do not omit, do not add songs not in the list.
+
+Format each line as: N. Song Name — explanation"""),
     ("human", "User mood: {query}\n\nRecommended songs:\n{songs}")
 ])
 
@@ -119,7 +123,11 @@ def run_rag(query: str, user_energy: float = 0.5):
         for i, s in enumerate(songs)
     ])
 
-    explanation = explain_chain.invoke({"query": query, "songs": songs_context})
+    explanation = explain_chain.invoke({
+        "query": query,
+        "songs": songs_context,
+        "num_songs": len(songs)
+    })
 
     return {"songs": songs, "expanded_query": expanded, "explanation": explanation}
 
