@@ -58,14 +58,17 @@ def fetch_cover(song, artist):
 
 st.set_page_config(page_title="Evaris", page_icon="🎵", layout="centered")
 
-with st.sidebar:
-    _db = SessionLocal()
-    total_visits = _db.query(Visit).count()
-    total_queries = _db.query(Visit).filter(Visit.query_text.isnot(None)).count()
-    _db.close()
-    st.markdown("### 📊 Traffic")
-    st.metric("Total visits", total_visits)
-    st.metric("Queries run", total_queries)
+is_admin = st.query_params.get("admin") == os.getenv("ADMIN_KEY", "")
+
+if is_admin:
+    with st.sidebar:
+        _db = SessionLocal()
+        total_visits = _db.query(Visit).count()
+        total_queries = _db.query(Visit).filter(Visit.query_text.isnot(None)).count()
+        _db.close()
+        st.markdown("### 📊 Traffic")
+        st.metric("Total visits", total_visits)
+        st.metric("Queries run", total_queries)
 
 st.markdown("""
 <style>
