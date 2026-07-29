@@ -38,7 +38,33 @@ def get_collection():
             name="evaris_songs",
             metadata={"hnsw:space": "cosine"}
         )
+        if _collection.count() == 0:
+            _rebuild_collection_from_supabase(_collection)
     return _collection
+
+def _rebuild_collection_from_supabase(collection):
+    # cold start on Streamlit Cloud = empty chroma_store on disk.
+    # pull the embeddings back from Supabase instead of relying on a
+    # committed sqlite file (that file held full plaintext descriptions,
+    # not just vectors, and shouldn't sit in the public repo)
+    db_url = st.secrets.get("DATABASE_URL") or os.getenv("DATABASE_URL")
+    engine = create_engine(db_url)
+    with engine.connect() as con:
+        df = pd.read_sql("SELECT song, artist, combined_text, embedding_json FROM sentiment_embeddings", con)
+
+    if df.empty:
+        st.error("sentiment_embeddings table is empty in Supabase — nothing to rebuild ChromaDB from.")
+        return
+
+    for _, row in df.iterrows():
+        embedding = eval(row["embedding_json"])
+        collection.upsert(
+            ids=[f"{row['song']}_{row['artist']}"],
+            embeddings=[embedding],
+            documents=[row["combined_text"]],
+            metadatas=[{"song": row["song"], "artist": row["artist"]}]
+        )
+    print(f"rebuilt chroma collection from Supabase: {len(df)} tracks")
 
 _llm = None
 def get_llm():
