@@ -7,10 +7,18 @@ DB_PATH = "song_dna.db"
 MODEL   = "paraphrase-multilingual-MiniLM-L12-v2"
 
 con = sqlite3.connect(DB_PATH)
-df  = pd.read_sql("SELECT song, artist, scene_description, personal_notes FROM songs", con)
+df  = pd.read_sql(
+    "SELECT song, artist, primary_vibe, secondary_vibe, scene_description, personal_notes FROM songs",
+    con
+)
 
+# adding vibe tags here too — scene descriptions alone were pulling in
+# happy rain songs for sad rain queries since they share so much imagery
 df["combined_text"] = (
-    df["scene_description"].fillna("") + " " + df["personal_notes"].fillna("")
+    df["primary_vibe"].fillna("") + " " +
+    df["secondary_vibe"].fillna("") + " " +
+    df["scene_description"].fillna("") + " " +
+    df["personal_notes"].fillna("")
 ).str.strip()
 
 print(f"🔤 Encoding {len(df)} tracks with {MODEL}...")

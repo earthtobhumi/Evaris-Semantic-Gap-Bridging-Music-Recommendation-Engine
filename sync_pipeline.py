@@ -178,10 +178,18 @@ def step3_nlp_embed():
     MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 
     con = sqlite3.connect(DB_PATH)
-    df = pd.read_sql("SELECT song, artist, scene_description, personal_notes FROM songs", con)
+    df = pd.read_sql(
+        "SELECT song, artist, primary_vibe, secondary_vibe, scene_description, personal_notes FROM songs",
+        con
+    )
 
+    # adding vibe tags here too — scene descriptions alone were pulling in
+    # happy rain songs for sad rain queries since they share so much imagery
     df["combined_text"] = (
-        df["scene_description"].fillna("") + " " + df["personal_notes"].fillna("")
+        df["primary_vibe"].fillna("") + " " +
+        df["secondary_vibe"].fillna("") + " " +
+        df["scene_description"].fillna("") + " " +
+        df["personal_notes"].fillna("")
     ).str.strip()
 
     log(f"🔤 Encoding {len(df)} tracks with {MODEL}...")
@@ -209,86 +217,61 @@ def step3_nlp_embed():
 
 
 # ============================================================
-# STEP 4 — REDDIT CROWD SENTIMENT BLEND
+# STEP 4 — CROWD SENTIMENT BLEND (from curated CSV, not live Reddit)
 # ============================================================
-def step4_reddit_blend():
+# PullPush kept 502ing so this step no longer hits their API live.
+# Instead it reads a pre-researched crowd sentiment CSV (one row per
+# song, hand-checked for tag mismatches and cleaned of meta-commentary
+# phrasing) and blends it in the same 0.7/0.3 personal/crowd way
+# reddit_blend.py used to. Swap this back to a live source later if
+# PullPush stabilizes or a Reddit API path opens up.
+def step4_crowd_sentiment_blend():
     log("\n" + "=" * 60)
-    log("STEP 4 — Blending Reddit crowd sentiment")
+    log("STEP 4 — Blending crowd sentiment (from CSV)")
     log("=" * 60)
 
-    import requests
     import numpy as np
     from sentence_transformers import SentenceTransformer
 
     MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
-    MAX_COMMENTS = 30
+    CSV_PATH = "crowd_sentiment.csv"
     W_PERSONAL = 0.7
     W_CROWD = 0.3
-    BASE_DELAY = 4          # seconds between requests, well under typical rate limits
-    MAX_RETRIES = 4
-    BACKOFF_BASE = 5         # 5s, 10s, 20s, 40s on consecutive 429s
 
-    def fetch_reddit_comments(song, artist):
-        """
-        Returns (comments_text, status) where status is one of:
-        'ok', 'empty' (no comments found, not rate-limited), 'rate_limited' (gave up after retries)
-        """
-        query = f"{song} {artist}"
-        url = f"https://api.pullpush.io/reddit/search/comment/?q={requests.utils.quote(query)}&size={MAX_COMMENTS}"
-
-        for attempt in range(MAX_RETRIES + 1):
-            try:
-                r = requests.get(url, timeout=30)
-                if r.status_code == 429:
-                    if attempt < MAX_RETRIES:
-                        wait = BACKOFF_BASE * (2 ** attempt)
-                        log(f"  ⏳ Rate limited (429) — retry {attempt+1}/{MAX_RETRIES} in {wait}s...")
-                        time.sleep(wait)
-                        continue
-                    else:
-                        return "", "rate_limited"
-                r.raise_for_status()
-                data = r.json().get("data", [])
-                comments = [d["body"] for d in data if len(d.get("body", "")) > 20]
-                text = " ".join(comments[:MAX_COMMENTS])
-                return text, ("ok" if text.strip() else "empty")
-            except Exception as e:
-                if attempt < MAX_RETRIES:
-                    wait = BACKOFF_BASE * (2 ** attempt)
-                    log(f"  ⚠️  PullPush error for {song}: {e} — retry {attempt+1}/{MAX_RETRIES} in {wait}s...")
-                    time.sleep(wait)
-                    continue
-                return "", "rate_limited"
-        return "", "rate_limited"
+    if not Path(CSV_PATH).exists():
+        fail(f"'{CSV_PATH}' not found in current directory.")
 
     def blend(personal_vec, crowd_vec):
         blended = (W_PERSONAL * personal_vec) + (W_CROWD * crowd_vec)
         return blended / np.linalg.norm(blended)
 
+    def norm_title(s):
+        s = str(s).strip().lower()
+        s = re.sub(r"[^\w\s]", "", s)  # drop (), commas, etc — titles are unique so this is enough
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
+
     con = sqlite3.connect(DB_PATH)
-    df = pd.read_sql("SELECT song, artist, embedding_json FROM sentiment_embeddings", con)
+    emb_df = pd.read_sql("SELECT song, artist, embedding_json FROM sentiment_embeddings", con)
+    crowd_df = pd.read_csv(CSV_PATH)
+    crowd_df["_norm_title"] = crowd_df["song"].apply(norm_title)
     model = SentenceTransformer(MODEL)
 
     updated = 0
-    empty_results = []
-    failed_after_retries = []
+    skipped = []
 
-    for _, row in df.iterrows():
-        log(f"🔍 Fetching Reddit comments: {row['song']} — {row['artist']}")
-        crowd_text, status = fetch_reddit_comments(row["song"], row["artist"])
+    for _, row in emb_df.iterrows():
+        # match on title only — song titles are validated unique in Step 1,
+        # and the crowd CSV's artist field often has fuller/different credits
+        # than the xlsx (features, corrected attributions) so it's not a reliable join key
+        match = crowd_df[crowd_df["_norm_title"] == norm_title(row["song"])]
 
-        if status == "rate_limited":
-            failed_after_retries.append(row["song"])
-            log(f"  ❌ Gave up after {MAX_RETRIES} retries — keeping personal embedding.")
-            time.sleep(BASE_DELAY)
+        if match.empty:
+            skipped.append(row["song"])
+            log(f"  ⏭️  No crowd sentiment row for {row['song']} — {row['artist']}, keeping personal embedding.")
             continue
 
-        if status == "empty":
-            empty_results.append(row["song"])
-            log(f"  ⏭️  No comments found (genuine), keeping personal embedding.")
-            time.sleep(BASE_DELAY)
-            continue
-
+        crowd_text = match.iloc[0]["crowd_sentiment_addition"]
         personal_vec = np.array(eval(row["embedding_json"]))
         crowd_vec = model.encode([crowd_text])[0]
         blended_vec = blend(personal_vec, crowd_vec)
@@ -299,18 +282,14 @@ def step4_reddit_blend():
         )
         con.commit()
         updated += 1
-        log(f"  ✅ Blended embedding updated.")
-        time.sleep(BASE_DELAY)
+        log(f"  ✅ {row['song']} — {row['artist']} blended with crowd sentiment.")
 
     con.close()
-    log(f"\n🎵 {updated}/{len(df)} embeddings enriched with Reddit crowd sentiment.")
-    if empty_results:
-        log(f"⏭️  {len(empty_results)} song(s) genuinely had no Reddit comments.")
-    if failed_after_retries:
-        log(f"\n⚠️  SUMMARY: {len(failed_after_retries)} song(s) failed after {MAX_RETRIES} retries (still rate-limited):")
-        for s in failed_after_retries:
+    log(f"\n🎵 {updated}/{len(emb_df)} embeddings enriched with crowd sentiment.")
+    if skipped:
+        log(f"⏭️  {len(skipped)} song(s) had no matching row in {CSV_PATH}:")
+        for s in skipped:
             log(f"    - {s}")
-        log("    Consider re-running --from-step 4 later, or increasing BASE_DELAY/BACKOFF_BASE.")
     return updated
 
 
@@ -491,7 +470,7 @@ STEPS = {
     1: ("Validate Excel", step1_validate_excel),
     2: ("Ingest Excel -> SQLite", step2_ingest_excel),
     3: ("NLP embeddings", step3_nlp_embed),
-    4: ("Reddit blend", step4_reddit_blend),
+    4: ("Crowd sentiment blend", step4_crowd_sentiment_blend),
     5: ("DSP batch extraction", step5_dsp_batch),
     6: ("Rebuild ChromaDB", step6_chroma_migrate),
     7: ("Migrate to Supabase", step7_migrate_to_pg),
