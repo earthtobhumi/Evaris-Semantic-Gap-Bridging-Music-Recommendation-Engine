@@ -1,4 +1,5 @@
 import os
+import json
 import numpy as np
 import pandas as pd
 import chromadb
@@ -28,6 +29,31 @@ def get_embedder():
         _embedder = SentenceTransformer(MODEL)
     return _embedder
 
+def _rebuild_collection_from_supabase(collection):
+    # cold start on Streamlit Cloud = chroma_store is empty, not gitignored missing.
+    # sentiment_embeddings holds the same vectors, migrated via migrate_embeddings_to_pg.py
+    db_url = st.secrets.get("DATABASE_URL") or os.getenv("DATABASE_URL")
+    engine = create_engine(db_url)
+    df = pd.read_sql("SELECT song, artist, combined_text, embedding_json FROM sentiment_embeddings", engine)
+
+    if df.empty:
+        st.error("sentiment_embeddings is empty in Supabase, can't rebuild chroma_store.")
+        return
+
+    ids = [f"{row.song}::{row.artist}" for row in df.itertuples()]
+    embeddings = [json.loads(e) for e in df["embedding_json"]]
+    documents = df["combined_text"].tolist()
+    metadatas = [{"song": row.song, "artist": row.artist} for row in df.itertuples()]
+
+    CHUNK = 50
+    for i in range(0, len(ids), CHUNK):
+        collection.add(
+            ids=ids[i:i+CHUNK],
+            embeddings=embeddings[i:i+CHUNK],
+            documents=documents[i:i+CHUNK],
+            metadatas=metadatas[i:i+CHUNK]
+        )
+
 _client = None
 _collection = None
 def get_collection():
@@ -38,6 +64,8 @@ def get_collection():
             name="evaris_songs",
             metadata={"hnsw:space": "cosine"}
         )
+        if _collection.count() == 0:
+            _rebuild_collection_from_supabase(_collection)
     return _collection
 
 _llm = None
